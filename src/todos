@@ -1,0 +1,5 @@
+1) erro ao filtrar por data em todos os itens
+2) alterar posição de filtro de data para ficar mais embaixo e não em cima
+3) loging e persistência permanente de filtros local, com opção de limpeza.
+
+OBS: (fica no radar) fiz hoje um export e no nubank aparece com centavos = 35 centavos, mas a planilha retorna 30 centavos... a diferença é mínima, mas existiu.

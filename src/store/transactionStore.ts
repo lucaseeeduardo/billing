@@ -5,6 +5,8 @@ import { Transaction, LEGACY_CATEGORY_MAP, LegacyCategory } from '@/types';
 interface TransactionState {
     transactions: Transaction[];
     filterText: string;
+    globalDateStart: string | null;
+    globalDateEnd: string | null;
     migrationDone: boolean;
 
     // Actions
@@ -14,6 +16,7 @@ interface TransactionState {
     uncategorizeTransaction: (id: string) => void;
     setTransactions: (transactions: Transaction[]) => void;
     setFilterText: (text: string) => void;
+    setGlobalDateFilter: (start: string | null, end: string | null) => void;
     clearTransactions: () => void;
     clearAllData: () => void;
     removeTransactionsByImportId: (importId: string) => void;
@@ -33,6 +36,8 @@ export const useTransactionStore = create<TransactionState>()(
         (set, get) => ({
             transactions: [],
             filterText: '',
+            globalDateStart: null,
+            globalDateEnd: null,
             migrationDone: false,
 
             addTransactions: (newTransactions) =>
@@ -65,11 +70,13 @@ export const useTransactionStore = create<TransactionState>()(
 
             setFilterText: (text) => set({ filterText: text }),
 
+            setGlobalDateFilter: (start, end) => set({ globalDateStart: start, globalDateEnd: end }),
+
             clearTransactions: () => set({ transactions: [], filterText: '' }),
 
             clearAllData: () => {
                 localStorage.removeItem('billing-transactions');
-                set({ transactions: [], filterText: '' });
+                set({ transactions: [], filterText: '', globalDateStart: null, globalDateEnd: null });
             },
 
             removeTransactionsByImportId: (importId) =>
@@ -96,26 +103,40 @@ export const useTransactionStore = create<TransactionState>()(
                 })),
 
             getUncategorized: () => {
-                const { transactions, filterText } = get();
+                const { transactions, filterText, globalDateStart, globalDateEnd } = get();
                 return transactions
                     .filter((t) => t.categoryId === null)
-                    .filter((t) =>
-                        filterText === '' ||
-                        t.title.toLowerCase().includes(filterText.toLowerCase())
-                    );
+                    .filter((t) => {
+                        // Date Filter
+                        if (globalDateStart && t.date < globalDateStart) return false;
+                        if (globalDateEnd && t.date > globalDateEnd) return false;
+                        // Text Filter
+                        return filterText === '' ||
+                            t.title.toLowerCase().includes(filterText.toLowerCase());
+                    });
             },
 
             getByCategoryId: (categoryId) => {
-                const { transactions } = get();
-                return transactions.filter((t) => t.categoryId === categoryId);
+                const { transactions, globalDateStart, globalDateEnd } = get();
+                return transactions
+                    .filter((t) => t.categoryId === categoryId)
+                    .filter((t) => {
+                        if (globalDateStart && t.date < globalDateStart) return false;
+                        if (globalDateEnd && t.date > globalDateEnd) return false;
+                        return true;
+                    });
             },
 
             getCategoryTotals: () => {
-                const { transactions } = get();
+                const { transactions, globalDateStart, globalDateEnd } = get();
                 const totals: Record<string, number> = {};
 
                 transactions.forEach((t) => {
                     if (t.categoryId) {
+                        // Apply date filter for totals too
+                        if (globalDateStart && t.date < globalDateStart) return;
+                        if (globalDateEnd && t.date > globalDateEnd) return;
+
                         totals[t.categoryId] = (totals[t.categoryId] || 0) + t.amount;
                     }
                 });
@@ -142,9 +163,17 @@ export const useTransactionStore = create<TransactionState>()(
         }),
         {
             name: 'billing-transactions',
-            version: 2,
+            version: 3, // Increment version for new fields
             migrate: (persistedState: unknown, version: number) => {
                 const state = persistedState as { transactions?: Transaction[]; migrationDone?: boolean };
+
+                // Migration to V2 logic (kept)
+                /* ... V2 logic implied ... */
+
+                // Just ensuring strict typing here to avoid errors, typically standard persist handles merging new fields with defaults
+                // but explicit migration is safer if we change structure depth.
+                // Since we just added root fields globalDateStart/End, standard merge usually works if we dont touch transactions structure.
+                // But let's keep the existing migration logic safe.
 
                 if (version < 2 && state.transactions) {
                     // Migrate from old category (string) to categoryId
@@ -162,6 +191,17 @@ export const useTransactionStore = create<TransactionState>()(
                         ...state,
                         transactions: migratedTransactions,
                         migrationDone: true,
+                        globalDateStart: null,
+                        globalDateEnd: null
+                    };
+                }
+
+                // V2 -> V3: Add global date fields
+                if (version < 3) {
+                    return {
+                        ...state,
+                        globalDateStart: null,
+                        globalDateEnd: null
                     };
                 }
 
@@ -170,6 +210,8 @@ export const useTransactionStore = create<TransactionState>()(
             partialize: (state) => ({
                 transactions: state.transactions,
                 migrationDone: state.migrationDone,
+                globalDateStart: state.globalDateStart,
+                globalDateEnd: state.globalDateEnd,
             }),
         }
     )

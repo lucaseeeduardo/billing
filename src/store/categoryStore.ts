@@ -12,6 +12,7 @@ interface CategoryState {
     deleteCategory: (id: string) => boolean;
     toggleActive: (id: string) => void;
     reorderCategories: (categories: Categoria[]) => void;
+    resetToDefaults: () => void;
 
     // Selectors
     getActiveCategories: () => Categoria[];
@@ -70,6 +71,8 @@ export const useCategoryStore = create<CategoryState>()(
 
             reorderCategories: (categories) =>
                 set({ categories }),
+
+            resetToDefaults: () => set({ categories: DEFAULT_CATEGORIES }),
 
             getActiveCategories: () => {
                 return get().categories.filter((cat) => cat.ativo);

@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef } from 'react';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
+import { useCategoryStore } from '@/store/categoryStore';
+import { Categoria } from '@/types';
 
 export type CurrencyFormat = 'pt-BR' | 'en-US';
 
@@ -15,6 +17,8 @@ export interface ParsedRow {
     rawAmount: string;
     isValid: boolean;
     error?: string;
+    categoryId: string | null;  // New field
+    tags: string[];             // New field
 }
 
 export interface CsvParserState {
@@ -33,7 +37,15 @@ interface UseCsvParserOptions {
     onError?: (error: string) => void;
 }
 
-// Helper function to parse currency based on format
+// Common header patterns
+const HEADER_PATTERNS = {
+    date: /^(date|data|dt|fecha|created)/i,
+    description: /^(desc|title|titulo|name|nome|texto|memo)/i,
+    amount: /^(amount|valor|value|price|preco|total|v$)/i,
+    category: /^(category|categoria|cat)/i,
+    tags: /^(tags|labels|etiquetas)/i,
+};
+
 function parseCurrencyValue(
     value: string,
     format: CurrencyFormat
@@ -49,10 +61,8 @@ function parseCurrencyValue(
 
     try {
         if (format === 'pt-BR') {
-            // pt-BR: 1.234,56 -> remove thousand separators (dots), replace decimal comma with dot
             cleaned = cleaned.replace(/\./g, '').replace(',', '.');
         } else {
-            // en-US: 1,234.56 -> remove thousand separators (commas), keep decimal dot
             cleaned = cleaned.replace(/,/g, '');
         }
 
@@ -68,10 +78,26 @@ function parseCurrencyValue(
     }
 }
 
-// Helper to parse raw data into rows
+// Helper to find category ID by name or ID
+function findCategory(value: string, categories: Categoria[]): string | null {
+    if (!value) return null;
+    const normalized = value.trim().toLowerCase();
+
+    // 1. Try exact ID match
+    const byId = categories.find(c => c.id === value.trim());
+    if (byId) return byId.id;
+
+    // 2. Try exact Name match (case-insensitive)
+    const byName = categories.find(c => c.nome.toLowerCase() === normalized);
+    if (byName) return byName.id;
+
+    return null;
+}
+
 function parseRawData(
     data: string[][],
-    currencyFormat: CurrencyFormat
+    currencyFormat: CurrencyFormat,
+    categories: Categoria[]
 ): {
     rows: ParsedRow[];
     validCount: number;
@@ -83,16 +109,58 @@ function parseRawData(
     let invalidCount = 0;
     let totalAmount = 0;
 
-    data.forEach((values, index) => {
-        const [date, title, rawAmount] = values;
+    if (data.length === 0) {
+        return { rows, validCount, invalidCount, totalAmount };
+    }
+
+    // 1. Detect Headers in first row
+    const firstRow = data[0];
+    const headerMap: Record<string, number> = {};
+    let hasHeaders = false;
+
+    // Check if first row looks like headers (string values, not numbers/dates)
+    // Simple heuristic: if any cell matches our header patterns
+    let matches = 0;
+    firstRow.forEach((cell, index) => {
+        if (HEADER_PATTERNS.date.test(cell)) { headerMap.date = index; matches++; }
+        else if (HEADER_PATTERNS.description.test(cell)) { headerMap.description = index; matches++; }
+        else if (HEADER_PATTERNS.amount.test(cell)) { headerMap.amount = index; matches++; }
+        else if (HEADER_PATTERNS.category.test(cell)) { headerMap.category = index; matches++; }
+        else if (HEADER_PATTERNS.tags.test(cell)) { headerMap.tags = index; matches++; }
+    });
+
+    if (matches >= 2) { // strict heuristic: at least 2 matches to confirm headers
+        hasHeaders = true;
+    }
+
+    const startIndex = hasHeaders ? 1 : 0;
+
+    // Default indices if no headers found (positional: date, desc, amount)
+    const idxDate = hasHeaders ? headerMap.date : 0;
+    const idxDesc = hasHeaders ? headerMap.description : 1;
+    const idxAmount = hasHeaders ? headerMap.amount : 2;
+    const idxCategory = hasHeaders ? headerMap.category : -1;
+    const idxTags = hasHeaders ? headerMap.tags : -1;
+
+    for (let i = startIndex; i < data.length; i++) {
+        const values = data[i];
+
+        // Skip empty rows
+        if (values.length <= 1 && values[0].trim() === '') continue;
+
+        const rawDate = values[idxDate];
+        const rawTitle = values[idxDesc];
+        const rawAmount = values[idxAmount];
+        const rawCategory = idxCategory !== -1 ? values[idxCategory] : '';
+        const rawTags = idxTags !== -1 ? values[idxTags] : '';
 
         const { amount, isValid: amountValid } = parseCurrencyValue(
             rawAmount || '',
             currencyFormat
         );
 
-        const hasDate = Boolean(date && date.trim() !== '');
-        const hasTitle = Boolean(title && title.trim() !== '');
+        const hasDate = Boolean(rawDate && rawDate.trim() !== '');
+        const hasTitle = Boolean(rawTitle && rawTitle.trim() !== '');
         const isValid: boolean = hasDate && hasTitle && amountValid;
 
         let error: string | undefined;
@@ -100,15 +168,23 @@ function parseRawData(
         else if (!hasTitle) error = 'Descrição ausente';
         else if (!amountValid) error = 'Valor inválido';
 
+        // Resolve Category
+        const categoryId = isValid ? findCategory(rawCategory, categories) : null;
+
+        // Parse Tags (comma separated)
+        const tags = rawTags ? rawTags.split(',').map(t => t.trim()).filter(Boolean) : [];
+
         const parsedRow: ParsedRow = {
             id: uuidv4(),
-            lineNumber: index + 1,
-            date: date?.trim() || '',
-            title: title?.trim() || '',
+            lineNumber: i + 1,
+            date: rawDate?.trim() || '',
+            title: rawTitle?.trim() || '',
             amount,
             rawAmount: rawAmount?.trim() || '',
             isValid,
             error,
+            categoryId,
+            tags
         };
 
         rows.push(parsedRow);
@@ -119,7 +195,7 @@ function parseRawData(
         } else {
             invalidCount++;
         }
-    });
+    }
 
     return { rows, validCount, invalidCount, totalAmount };
 }
@@ -138,6 +214,8 @@ export function useCsvParser({
         error: null,
         progress: 0,
     });
+
+    const categories = useCategoryStore((state) => state.categories);
 
     // Store raw data for re-parsing
     const rawDataRef = useRef<string[][] | null>(null);
@@ -164,7 +242,8 @@ export function useCsvParser({
 
                     const { rows, validCount, invalidCount, totalAmount } = parseRawData(
                         data,
-                        currencyFormat
+                        currencyFormat,
+                        categories
                     );
 
                     setState({
@@ -192,7 +271,7 @@ export function useCsvParser({
                 },
             });
         },
-        [onComplete, onError]
+        [onComplete, onError, categories]
     );
 
     // Re-parse with new currency format without re-reading file
@@ -202,7 +281,8 @@ export function useCsvParser({
 
             const { rows, validCount, invalidCount, totalAmount } = parseRawData(
                 rawDataRef.current,
-                currencyFormat
+                currencyFormat,
+                categories
             );
 
             setState({
@@ -216,7 +296,7 @@ export function useCsvParser({
                 progress: 100,
             });
         },
-        []
+        [categories]
     );
 
     const removeRow = useCallback((id: string) => {

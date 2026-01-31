@@ -12,6 +12,7 @@ interface ImportHistoryState {
     addImport: (data: Omit<ImportacaoHistorico, 'id' | 'dataImportacao'>) => string;
     updateImportStatus: (id: string, status: ImportacaoHistorico['status'], erros?: string[]) => void;
     deleteImport: (id: string) => void;
+    clearHistory: () => void;
 
     // Selectors
     getImportById: (id: string) => ImportacaoHistorico | undefined;
@@ -50,6 +51,8 @@ export const useImportHistoryStore = create<ImportHistoryState>()(
                 set((state) => ({
                     history: state.history.filter((imp) => imp.id !== id),
                 })),
+
+            clearHistory: () => set({ history: [] }),
 
             getImportById: (id) => {
                 return get().history.find((imp) => imp.id === id);

@@ -180,6 +180,123 @@ export function CategoryModal({ isOpen, onClose, category }: CategoryModalProps)
 }
 
 // ========================================
+// Auto Category Rules Component
+// ========================================
+import { useAutoCategoryStore } from '@/store/autoCategoryStore';
+
+function RulesManager() {
+    const rules = useAutoCategoryStore((state) => state.rules);
+    const addRule = useAutoCategoryStore((state) => state.addRule);
+    const removeRule = useAutoCategoryStore((state) => state.removeRule);
+    const toggleRule = useAutoCategoryStore((state) => state.toggleRule);
+
+    const categories = useCategoryStore((state) => state.categories);
+
+    const [term, setTerm] = useState('');
+    const [categoryId, setCategoryId] = useState('');
+
+    const handleAdd = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!term || !categoryId) return;
+        addRule(term, categoryId);
+        setTerm('');
+        setCategoryId('');
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* Add Rule Form */}
+            <form onSubmit={handleAdd} className="p-4 bg-blue-50/50 border-b border-blue-100 space-y-3">
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Nova Regra</label>
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <input
+                                type="text"
+                                value={term}
+                                onChange={(e) => setTerm(e.target.value)}
+                                placeholder="Se a descrição conter..."
+                                className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div className="w-1/3">
+                            <select
+                                value={categoryId}
+                                onChange={(e) => setCategoryId(e.target.value)}
+                                className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            >
+                                <option value="" disabled>Mover para...</option>
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.icone} {cat.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={!term || !categoryId}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            +
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            {/* Rules List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {rules.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400">
+                        <p>Nenhuma regra definida.</p>
+                        <p className="text-xs mt-1">Regras ajudam a classificar automaticamente novas transações.</p>
+                    </div>
+                ) : (
+                    rules.map(rule => {
+                        const targetCat = categories.find(c => c.id === rule.categoryId);
+                        return (
+                            <div key={rule.id} className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${rule.active ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                    <div className="flex flex-col">
+                                        <div className="text-sm font-medium text-gray-700">
+                                            "{rule.term}"
+                                        </div>
+                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                            <span>move para</span>
+                                            <span
+                                                className="px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-700 font-medium flex items-center gap-1"
+                                                style={{ backgroundColor: targetCat?.cor + '20', color: targetCat?.cor }}
+                                            >
+                                                {targetCat?.icone} {targetCat?.nome || '???'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => toggleRule(rule.id)}
+                                        className={`p-1.5 rounded-lg transition-colors ${rule.active ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                                        title={rule.active ? 'Desativar' : 'Ativar'}
+                                    >
+                                        {rule.active ? '✅' : '⏸️'}
+                                    </button>
+                                    <button
+                                        onClick={() => removeRule(rule.id)}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Excluir"
+                                    >
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ========================================
 // Category Manager Component
 // ========================================
 
@@ -188,12 +305,15 @@ interface CategoryManagerProps {
     onClose: () => void;
 }
 
+type Tab = 'categories' | 'rules';
+
 export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
     const categories = useCategoryStore((state) => state.categories);
     const deleteCategory = useCategoryStore((state) => state.deleteCategory);
     const toggleActive = useCategoryStore((state) => state.toggleActive);
     const getByCategoryId = useTransactionStore((state) => state.getByCategoryId);
 
+    const [activeTab, setActiveTab] = useState<Tab>('categories');
     const [editingCategory, setEditingCategory] = useState<Categoria | null>(null);
     const [showNewModal, setShowNewModal] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -219,121 +339,151 @@ export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg h-[600px] max-h-[90vh] overflow-hidden flex flex-col">
                     {/* Header */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
-                                <span className="text-xl">⚙️</span>
+                    <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white z-10">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+                                    <span className="text-xl">⚙️</span>
+                                </div>
+                                <h2 className="text-xl font-bold text-gray-900">Gerenciar</h2>
                             </div>
-                            <h2 className="text-xl font-bold text-gray-900">Gerenciar Categorias</h2>
+                            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
+
+                        {/* Tabs */}
+                        <div className="flex p-1 bg-gray-100 rounded-xl">
+                            <button
+                                onClick={() => setActiveTab('categories')}
+                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'categories'
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                Categorias
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('rules')}
+                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'rules'
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                Regras Automáticas 🤖
+                            </button>
+                        </div>
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                        {categories.map((cat) => {
-                            const count = getByCategoryId(cat.id).length;
-                            return (
-                                <div
-                                    key={cat.id}
-                                    className={`p-4 rounded-xl border-2 transition-all
-                              ${cat.ativo ? 'border-gray-200 bg-white' : 'border-dashed border-gray-300 bg-gray-50 opacity-60'}`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
+                    <div className="flex-1 overflow-hidden relative">
+                        {activeTab === 'categories' ? (
+                            <div className="h-full flex flex-col">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                    {categories.map((cat) => {
+                                        const count = getByCategoryId(cat.id).length;
+                                        return (
                                             <div
-                                                className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl"
-                                                style={{ backgroundColor: cat.cor + '20' }}
+                                                key={cat.id}
+                                                className={`p-4 rounded-xl border-2 transition-all
+                                          ${cat.ativo ? 'border-gray-200 bg-white' : 'border-dashed border-gray-300 bg-gray-50 opacity-60'}`}
                                             >
-                                                {cat.icone}
-                                            </div>
-                                            <div>
-                                                <div className="font-semibold text-gray-900">{cat.nome}</div>
-                                                <div className="text-sm text-gray-500">
-                                                    <span
-                                                        className="inline-block w-3 h-3 rounded-full mr-1"
-                                                        style={{ backgroundColor: cat.cor }}
-                                                    />
-                                                    {count} {count === 1 ? 'transação' : 'transações'}
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div
+                                                            className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl"
+                                                            style={{ backgroundColor: cat.cor + '20' }}
+                                                        >
+                                                            {cat.icone}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-semibold text-gray-900">{cat.nome}</div>
+                                                            <div className="text-sm text-gray-500">
+                                                                <span
+                                                                    className="inline-block w-3 h-3 rounded-full mr-1"
+                                                                    style={{ backgroundColor: cat.cor }}
+                                                                />
+                                                                {count} {count === 1 ? 'transação' : 'transações'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1">
+                                                        {/* Toggle Active */}
+                                                        <button
+                                                            onClick={() => toggleActive(cat.id)}
+                                                            className={`p-2 rounded-lg transition-colors
+                                                ${cat.ativo ? 'hover:bg-gray-100' : 'hover:bg-green-100'}`}
+                                                            title={cat.ativo ? 'Desativar' : 'Ativar'}
+                                                        >
+                                                            {cat.ativo ? '👁️' : '👁️‍🗨️'}
+                                                        </button>
+
+                                                        {/* Edit */}
+                                                        <button
+                                                            onClick={() => setEditingCategory(cat)}
+                                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                                            title="Editar"
+                                                        >
+                                                            ✏️
+                                                        </button>
+
+                                                        {/* Delete */}
+                                                        {!cat.isDefault && (
+                                                            deleteConfirm === cat.id ? (
+                                                                <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={() => handleDelete(cat.id)}
+                                                                        className="px-2 py-1 bg-red-500 text-white text-xs rounded-lg"
+                                                                    >
+                                                                        Confirmar
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setDeleteConfirm(null)}
+                                                                        className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg"
+                                                                    >
+                                                                        Cancelar
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => setDeleteConfirm(cat.id)}
+                                                                    className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                                                                    title="Excluir"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            )
+                                                        )}
+                                                        {cat.isDefault && (
+                                                            <span className="p-2" title="Categoria padrão">🔒</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-1">
-                                            {/* Toggle Active */}
-                                            <button
-                                                onClick={() => toggleActive(cat.id)}
-                                                className={`p-2 rounded-lg transition-colors
-                                    ${cat.ativo ? 'hover:bg-gray-100' : 'hover:bg-green-100'}`}
-                                                title={cat.ativo ? 'Desativar' : 'Ativar'}
-                                            >
-                                                {cat.ativo ? '👁️' : '👁️‍🗨️'}
-                                            </button>
-
-                                            {/* Edit */}
-                                            <button
-                                                onClick={() => setEditingCategory(cat)}
-                                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                                title="Editar"
-                                            >
-                                                ✏️
-                                            </button>
-
-                                            {/* Delete */}
-                                            {!cat.isDefault && (
-                                                deleteConfirm === cat.id ? (
-                                                    <div className="flex gap-1">
-                                                        <button
-                                                            onClick={() => handleDelete(cat.id)}
-                                                            className="px-2 py-1 bg-red-500 text-white text-xs rounded-lg"
-                                                        >
-                                                            Confirmar
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setDeleteConfirm(null)}
-                                                            className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg"
-                                                        >
-                                                            Cancelar
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setDeleteConfirm(cat.id)}
-                                                        className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                                                        title="Excluir"
-                                                    >
-                                                        🗑️
-                                                    </button>
-                                                )
-                                            )}
-                                            {cat.isDefault && (
-                                                <span className="p-2" title="Categoria padrão">🔒</span>
-                                            )}
-                                        </div>
-                                    </div>
+                                        );
+                                    })}
                                 </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="p-4 border-t border-gray-100 bg-gray-50">
-                        <button
-                            onClick={() => setShowNewModal(true)}
-                            className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600
-                         text-white font-medium rounded-xl shadow-lg
-                         hover:shadow-xl transition-all hover:-translate-y-0.5
-                         flex items-center justify-center gap-2"
-                        >
-                            <span className="text-xl">+</span>
-                            Nova Categoria
-                        </button>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                                    <button
+                                        onClick={() => setShowNewModal(true)}
+                                        className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600
+                                     text-white font-medium rounded-xl shadow-lg
+                                     hover:shadow-xl transition-all hover:-translate-y-0.5
+                                     flex items-center justify-center gap-2"
+                                    >
+                                        <span className="text-xl">+</span>
+                                        Nova Categoria
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <RulesManager />
+                        )}
                     </div>
                 </div>
             </div>

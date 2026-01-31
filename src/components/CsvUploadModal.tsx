@@ -5,18 +5,21 @@ import { CsvDropZone } from './CsvDropZone';
 import { CsvPreviewTable } from './CsvPreviewTable';
 import { CurrencyFormatSelector } from './CurrencyFormatSelector';
 import { useCsvParser, CurrencyFormat } from '@/hooks/useCsvParser';
+import { useCsvFilters } from '@/hooks/useCsvFilters';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useImportHistoryStore } from '@/store/importHistoryStore';
 import { Transaction } from '@/types';
+import { useRowSelection } from '@/hooks/useRowSelection';
 
 type UploadStep = 'upload' | 'preview' | 'complete';
 
 interface CsvUploadModalProps {
     isOpen: boolean;
     onClose: () => void;
+    preloadedFile?: File | null; // Support for pre-loaded file (dnd)
 }
 
-export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
+export function CsvUploadModal({ isOpen, onClose, preloadedFile }: CsvUploadModalProps) {
     const [step, setStep] = useState<UploadStep>('upload');
     const [currencyFormat, setCurrencyFormat] = useState<CurrencyFormat>('pt-BR');
     const [fileName, setFileName] = useState<string>('');
@@ -42,15 +45,45 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
         onError: () => setStep('upload'),
     });
 
-    // Reset when modal opens
+    // Filters & Selection
+    const {
+        filters,
+        filteredItems,
+        filteredCount,
+        hasActiveFilters,
+        setDateRange,
+        setDescription,
+        setValueRange,
+    } = useCsvFilters(rows);
+
+    const {
+        selectedIds,
+        toggleSelection,
+        toggleAll,
+        clearSelection,
+        selectionCount,
+        hasSelection
+    } = useRowSelection();
+
+    // Reset when modal opens or preloadedFile changes
     useEffect(() => {
         if (isOpen) {
             setStep('upload');
             reset();
             setFileName('');
             fileRef.current = null;
+            clearSelection();
+
+            // Clear filters
+            setDateRange(null, null);
+            setDescription('');
+            setValueRange(null, null);
+
+            if (preloadedFile) {
+                handleFileSelect(preloadedFile);
+            }
         }
-    }, [isOpen, reset]);
+    }, [isOpen, preloadedFile, reset, clearSelection, setDateRange, setDescription, setValueRange]);
 
     const handleFileSelect = useCallback((file: File) => {
         fileRef.current = file;
@@ -63,28 +96,40 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
         setFileName('');
         fileRef.current = null;
         setStep('upload');
-    }, [reset]);
+        clearSelection();
+    }, [reset, clearSelection]);
 
     const handleImport = useCallback(() => {
-        const validRowsList = getValidRows();
-        const totalVal = validRowsList.reduce((sum, row) => sum + row.amount, 0);
+        // Decide which rows to import:
+        // 1. If selection exists -> Only selected (must be valid)
+        // 2. If no selection -> All filtered valid rows (Import All visible)
+
+        let rowsToImport = filteredItems.filter(r => r.isValid);
+
+        if (hasSelection) {
+            rowsToImport = rowsToImport.filter(r => selectedIds.has(r.id));
+        }
+
+        if (rowsToImport.length === 0) return;
+
+        const totalVal = rowsToImport.reduce((sum, row) => sum + row.amount, 0);
 
         const importId = addImport({
             nomeArquivo: fileName,
-            quantidadeItens: validRowsList.length,
+            quantidadeItens: rowsToImport.length,
             valorTotal: totalVal,
             status: invalidRows > 0 ? 'parcial' : 'sucesso',
-            erros: invalidRows > 0 ? [`${invalidRows} linhas inválidas`] : undefined,
-            itensIds: validRowsList.map(r => r.id),
+            erros: invalidRows > 0 ? [`${invalidRows} linhas inválidas ignoradas`] : undefined,
+            itensIds: rowsToImport.map(r => r.id),
         });
 
-        const transactions: Transaction[] = validRowsList.map((row) => ({
+        const transactions: Transaction[] = rowsToImport.map((row) => ({
             id: row.id,
             date: row.date,
             title: row.title,
             amount: row.amount,
-            categoryId: null,
-            tags: [],
+            categoryId: row.categoryId || null, // Use auto-categorized ID
+            tags: row.tags || [],
             importId,
         }));
 
@@ -96,11 +141,10 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
         setTimeout(() => {
             onClose();
         }, 1500);
-    }, [getValidRows, clearTransactions, addTransactions, onClose, addImport, fileName, invalidRows]);
+    }, [filteredItems, hasSelection, selectedIds, clearTransactions, addTransactions, onClose, addImport, fileName, invalidRows]);
 
     const handleCurrencyChange = useCallback((format: CurrencyFormat) => {
         setCurrencyFormat(format);
-        // Re-parse with new format
         reparseWithFormat(format);
     }, [reparseWithFormat]);
 
@@ -115,7 +159,7 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
             />
 
             {/* Modal */}
-            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                     <div className="flex items-center gap-3">
@@ -128,7 +172,7 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
                             <h2 className="text-xl font-bold text-gray-900">Importar Transações</h2>
                             <p className="text-sm text-gray-500">
                                 {step === 'upload' && 'Selecione um arquivo CSV'}
-                                {step === 'preview' && 'Revise os dados antes de importar'}
+                                {step === 'preview' && 'Revise e filtre os dados antes de importar'}
                                 {step === 'complete' && 'Importação concluída!'}
                             </p>
                         </div>
@@ -159,27 +203,89 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-auto p-6">
+                <div className="flex-1 overflow-auto p-6 bg-gray-50">
                     {/* Step: Upload */}
                     {step === 'upload' && (
-                        <CsvDropZone
-                            onFileSelect={handleFileSelect}
-                            status={status === 'parsing' ? 'processing' : status === 'error' ? 'error' : 'idle'}
-                            fileName={fileName}
-                            onClear={handleClear}
-                        />
+                        <div className="h-full flex items-center justify-center">
+                            <CsvDropZone
+                                onFileSelect={handleFileSelect}
+                                status={status === 'parsing' ? 'processing' : status === 'error' ? 'error' : 'idle'}
+                                fileName={fileName}
+                                onClear={handleClear}
+                            />
+                        </div>
                     )}
 
                     {/* Step: Preview */}
                     {step === 'preview' && (
-                        <CsvPreviewTable
-                            rows={rows}
-                            totalAmount={totalAmount}
-                            validRows={validRows}
-                            invalidRows={invalidRows}
-                            onRemoveRow={removeRow}
-                            maxHeight={400}
-                        />
+                        <div className="flex flex-col gap-4 h-full">
+                            {/* Pre-Processing Filters */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* Description Filter */}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Descrição</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Filtrar por nome..."
+                                        value={filters.description.value}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+
+                                {/* Value Filter */}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Valor (Mín / Máx)</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            placeholder="Min"
+                                            value={filters.value.min ?? ''}
+                                            onChange={(e) => setValueRange(e.target.value ? Number(e.target.value) : null, filters.value.max)}
+                                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                        <input
+                                            type="number"
+                                            placeholder="Max"
+                                            value={filters.value.max ?? ''}
+                                            onChange={(e) => setValueRange(filters.value.min, e.target.value ? Number(e.target.value) : null)}
+                                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Date Filter (Simple inputs for now) */}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Data (Início / Fim)</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="date"
+                                            value={filters.date.from ? filters.date.from.toISOString().split('T')[0] : ''}
+                                            onChange={(e) => setDateRange(e.target.value ? new Date(e.target.value) : null, filters.date.to)}
+                                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={filters.date.to ? filters.date.to.toISOString().split('T')[0] : ''}
+                                            onChange={(e) => setDateRange(filters.date.from, e.target.value ? new Date(e.target.value) : null)}
+                                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <CsvPreviewTable
+                                rows={filteredItems}
+                                totalAmount={totalAmount}
+                                validRows={validRows}
+                                invalidRows={invalidRows}
+                                selectedIds={selectedIds}
+                                onToggleSelection={toggleSelection}
+                                onToggleAll={toggleAll}
+                                onRemoveRow={removeRow}
+                                maxHeight={450}
+                            />
+                        </div>
                     )}
 
                     {/* Step: Complete */}
@@ -192,7 +298,7 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
                             </div>
                             <h3 className="text-2xl font-bold text-gray-900 mb-2">Sucesso!</h3>
                             <p className="text-gray-500">
-                                {validRows} transações foram importadas
+                                Transações importadas com sucesso.
                             </p>
                         </div>
                     )}
@@ -200,32 +306,41 @@ export function CsvUploadModal({ isOpen, onClose }: CsvUploadModalProps) {
 
                 {/* Footer */}
                 {step === 'preview' && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-white">
                         <button
                             onClick={handleClear}
                             className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                         >
-                            ← Voltar
+                            ← Cancelar
                         </button>
 
                         <div className="flex items-center gap-3">
-                            {invalidRows > 0 && (
-                                <span className="text-sm text-amber-600">
-                                    ⚠️ {invalidRows} itens com problemas serão ignorados
-                                </span>
-                            )}
+                            <div className="text-sm text-gray-500 text-right mr-2">
+                                {hasSelection ? (
+                                    <>
+                                        <p className="font-semibold text-blue-600">{selectionCount} itens selecionados</p>
+                                        <p className="text-xs">Apenas estes serão importados</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="font-semibold text-gray-700">{filteredCount} itens filtrados</p>
+                                        <p className="text-xs">Todos itens válidos da lista serão importados</p>
+                                    </>
+                                )}
+                            </div>
+
                             <button
                                 onClick={handleImport}
-                                disabled={validRows === 0}
+                                disabled={filteredCount === 0}
                                 className={`
                   px-6 py-2.5 rounded-xl font-semibold transition-all duration-200
-                  ${validRows > 0
+                  ${filteredCount > 0
                                         ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:-translate-y-0.5'
                                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     }
                 `}
                             >
-                                Importar {validRows} {validRows === 1 ? 'transação' : 'transações'}
+                                {hasSelection ? 'Importar Selecionados' : 'Importar Tudo'}
                             </button>
                         </div>
                     </div>

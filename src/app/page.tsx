@@ -14,6 +14,7 @@ import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { Transaction } from '@/types';
 import { useImportHistoryStore } from '@/store/importHistoryStore';
+import { useAutoCategoryStore } from '@/store/autoCategoryStore';
 
 import { ExportButton } from '@/components/ExportButton';
 import { InboxList } from '@/components/InboxList';
@@ -99,6 +100,8 @@ export default function Home() {
         selectionState.clearSelection();
     }, [filterState.filters]);
 
+    const getMatchingCategory = useAutoCategoryStore((state) => state.getMatchingCategory);
+
     const handleProcessTransactions = useCallback((rowsToProcess: ParsedRow[]) => {
         // Calculate totals for history
         const totalAmount = rowsToProcess.reduce((sum, row) => sum + row.amount, 0);
@@ -113,14 +116,24 @@ export default function Home() {
             itensIds: itemIds,
         });
 
-        const newTransactions: Transaction[] = rowsToProcess.map((row) => ({
-            id: row.id,
-            date: new Date(row.date).toISOString(), // Ensure ISO string
-            title: row.title,
-            amount: row.amount,
-            categoryId: null, // Initial state, user will drag to categorize
-            importId: importId, // Tracking batch import
-        }));
+        let autoCategorizedCount = 0;
+
+        const newTransactions: Transaction[] = rowsToProcess.map((row) => {
+            // Check for auto-categorization rule
+            const matchedCategoryId = getMatchingCategory(row.title);
+            if (matchedCategoryId) {
+                autoCategorizedCount++;
+            }
+
+            return {
+                id: row.id,
+                date: new Date(row.date).toISOString(), // Ensure ISO string
+                title: row.title,
+                amount: row.amount,
+                categoryId: matchedCategoryId, // Use matched category or null if not found
+                importId: importId, // Tracking batch import
+            };
+        });
 
         // Add to store (append)
         setTransactions([...transactions, ...newTransactions]);
@@ -129,14 +142,22 @@ export default function Home() {
         // If processing ALL rows, just reset
         if (rowsToProcess.length === csvState.rows.length) {
             handleReset();
-            showToast(`${newTransactions.length} transações importadas com sucesso!`);
+            if (autoCategorizedCount > 0) {
+                showToast(`${newTransactions.length} importados (${autoCategorizedCount} auto-classificados)!`);
+            } else {
+                showToast(`${newTransactions.length} transações importadas com sucesso!`);
+            }
         } else {
             // Processing subset - remove one by one (ideal would be bulk remove)
             rowsToProcess.forEach(row => csvState.removeRow(row.id));
             selectionState.clearSelection();
-            showToast(`${newTransactions.length} transações importadas. Restam ${csvState.rows.length - newTransactions.length}.`);
+            if (autoCategorizedCount > 0) {
+                showToast(`${newTransactions.length} importados (${autoCategorizedCount} auto-classificados). Restam ${csvState.rows.length - newTransactions.length}.`);
+            } else {
+                showToast(`${newTransactions.length} transações importadas. Restam ${csvState.rows.length - newTransactions.length}.`);
+            }
         }
-    }, [transactions, setTransactions, csvState, handleReset, selectionState, showToast, addImport, fileName]);
+    }, [transactions, setTransactions, csvState, handleReset, selectionState, showToast, addImport, fileName, getMatchingCategory]);
 
     const handleProcessSelected = useCallback(() => {
         const selectedRows = csvState.rows.filter(r => selectionState.selectedIds.has(r.id));
@@ -324,6 +345,43 @@ export default function Home() {
                                 onUndo={handleUndo}
                                 onRedo={handleRedo}
                             />
+                            <div className="w-px h-8 bg-gray-200" />
+
+                            {/* Global Date Filter */}
+                            <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm">
+                                <span className="pl-2 text-gray-400">📅</span>
+                                <input
+                                    type="date"
+                                    className="text-sm bg-transparent border-none focus:ring-0 text-gray-600 w-32 cursor-pointer"
+                                    onChange={(e) => {
+                                        const end = useTransactionStore.getState().globalDateEnd;
+                                        useTransactionStore.getState().setGlobalDateFilter(e.target.value || null, end);
+                                    }}
+                                    value={useTransactionStore((state) => state.globalDateStart) || ''}
+                                    title="Data Início"
+                                />
+                                <span className="text-gray-400">→</span>
+                                <input
+                                    type="date"
+                                    className="text-sm bg-transparent border-none focus:ring-0 text-gray-600 w-32 cursor-pointer"
+                                    onChange={(e) => {
+                                        const start = useTransactionStore.getState().globalDateStart;
+                                        useTransactionStore.getState().setGlobalDateFilter(start, e.target.value || null);
+                                    }}
+                                    value={useTransactionStore((state) => state.globalDateEnd) || ''}
+                                    title="Data Fim"
+                                />
+                                {(useTransactionStore((state) => state.globalDateStart) || useTransactionStore((state) => state.globalDateEnd)) && (
+                                    <button
+                                        onClick={() => useTransactionStore.getState().setGlobalDateFilter(null, null)}
+                                        className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                                        title="Limpar filtro de data"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+
                             <div className="w-px h-8 bg-gray-200" />
 
                             <button
