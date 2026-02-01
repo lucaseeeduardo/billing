@@ -300,6 +300,114 @@ function RulesManager() {
 // ========================================
 
 import { downloadBackup, restoreBackup } from '@/utils/backupManager';
+import { saveToCloud, loadFromCloud } from '@/actions/sync';
+import { useSession } from 'next-auth/react';
+import { LoginButtons } from '../auth/LoginButtons';
+import { useLimitsStore } from '@/store/limitsStore';
+
+function CloudBackupManager() {
+    const { data: session, status } = useSession();
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSaveToCloud = async () => {
+        if (!confirm('Isso irá SOBRESCREVER seus dados na nuvem com a configuração atual. Continuar?')) return;
+
+        setIsLoading(true);
+        try {
+            const data = {
+                categories: useCategoryStore.getState().categories,
+                rules: useAutoCategoryStore.getState().rules,
+                limits: useLimitsStore.getState().limits
+            };
+
+            await saveToCloud(data);
+            alert('✅ Dados salvos na nuvem com sucesso!');
+        } catch (error) {
+            console.error(error);
+            alert('❌ Erro ao salvar na nuvem. Tente novamente.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLoadFromCloud = async () => {
+        if (!confirm('Isso irá SUBSTITUIR sua configuração local pela da nuvem. Continuar?')) return;
+
+        setIsLoading(true);
+        try {
+            const data = await loadFromCloud();
+
+            if (!data) {
+                alert('Nenhum dado encontrado na nuvem.');
+                return;
+            }
+
+            // Restore logic consistent with file import
+            if (data.categories.length > 0) useCategoryStore.getState().importCategories(data.categories);
+            if (data.rules.length > 0) useAutoCategoryStore.getState().setRules(data.rules);
+            if (data.limits.length > 0) useLimitsStore.getState().setLimits(data.limits);
+
+            alert('✅ Configurações restauradas da nuvem!');
+        } catch (error) {
+            console.error(error);
+            alert('❌ Erro ao carregar da nuvem.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    if (status === 'loading') return <div className="p-4 text-center">Carregando...</div>;
+
+    if (!session) {
+        return (
+            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-6 text-center">
+                <div className="text-4xl mb-3">☁️</div>
+                <h3 className="font-bold text-indigo-900 mb-2">Sincronização na Nuvem</h3>
+                <p className="text-sm text-indigo-700 mb-6">
+                    Faça login para salvar suas configurações e acessá-las de qualquer dispositivo.
+                </p>
+                <div className="max-w-xs mx-auto">
+                    <LoginButtons />
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+                <div>
+                    <h3 className="font-bold text-indigo-900 flex items-center gap-2">
+                        ☁️ Nuvem ({session.user?.name?.split(' ')[0]})
+                    </h3>
+                    <p className="text-xs text-indigo-600">Seus dados seguros no Neon DB</p>
+                </div>
+                {/* Logout could go here if needed, but usually handled in header */}
+            </div>
+
+            <div className="flex gap-3">
+                <button
+                    onClick={handleSaveToCloud}
+                    disabled={isLoading}
+                    className="flex-1 px-4 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                    {isLoading ? 'Salvando...' : (
+                        <><span>⬆️</span> Salvar na Nuvem</>
+                    )}
+                </button>
+                <button
+                    onClick={handleLoadFromCloud}
+                    disabled={isLoading}
+                    className="flex-1 px-4 py-3 bg-white border border-indigo-200 text-indigo-700 font-medium rounded-xl hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                    {isLoading ? 'Carregando...' : (
+                        <><span>⬇️</span> Baixar da Nuvem</>
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+}
 
 function BackupManager() {
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -326,7 +434,7 @@ function BackupManager() {
     };
 
     return (
-        <div className="p-6 space-y-6">
+        <div className="h-full overflow-y-auto p-6 space-y-6">
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <h3 className="font-semibold text-blue-900 mb-2">Backup Completo 📦</h3>
                 <p className="text-sm text-blue-700 mb-4">
@@ -367,6 +475,8 @@ function BackupManager() {
                     </ul>
                 </p>
             </div>
+
+            <CloudBackupManager />
         </div>
     );
 }
