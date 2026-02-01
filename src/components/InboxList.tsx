@@ -11,8 +11,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { AdvancedFilters } from './filters/AdvancedFilters';
 import { useMultiSelect } from '@/hooks/useMultiSelect';
 import { Transaction } from '@/types';
-import { CsvUploadModal } from './CsvUploadModal';
-import { useDropZone } from '@/hooks/useDropZone';
+
 
 interface InboxListProps {
     selectedIds: Set<string>;
@@ -43,22 +42,7 @@ export function InboxList({ selectedIds, onSelectionChange }: InboxListProps) {
 
     const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
-    // Upload Modal State
-    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [droppedFile, setDroppedFile] = useState<File | null>(null);
 
-    // Drop Zone Logic for Inline Drop
-    const {
-        isDragging: isDragActive,
-        getRootProps: getDropRootProps,
-        getInputProps: getDropInputProps,
-    } = useDropZone({
-        accept: ['.csv'],
-        onFileDrop: (file) => {
-            setDroppedFile(file);
-            setIsUploadModalOpen(true);
-        }
-    });
 
     // Apply filters
     const filteredTransactions = useMemo(() => {
@@ -141,16 +125,7 @@ export function InboxList({ selectedIds, onSelectionChange }: InboxListProps) {
                             <span className="text-lg">🧹</span>
                         </button>
 
-                        {/* Upload Button */}
-                        <button
-                            onClick={() => setIsUploadModalOpen(true)}
-                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                            title="Importar CSV"
-                        >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                            </svg>
-                        </button>
+
                     </div>
                 </div>
 
@@ -206,25 +181,8 @@ export function InboxList({ selectedIds, onSelectionChange }: InboxListProps) {
                 </div>
             </div>
 
-            {/* Inline Drop Zone Area - Always visible but subtle, or covers list on drag */}
-            <div
-                {...getDropRootProps()}
-                className={`flex-1 overflow-hidden relative flex flex-col ${isDragActive ? 'bg-blue-50 ring-2 ring-inset ring-blue-500' : ''}`}
-            >
-                <input {...getDropInputProps()} />
-
-                {isDragActive && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-blue-50/90 backdrop-blur-sm">
-                        <div className="flex flex-col items-center animate-bounce">
-                            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 text-blue-500">
-                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                            </div>
-                            <h3 className="text-xl font-bold text-blue-700">Solte para importar</h3>
-                        </div>
-                    </div>
-                )}
+            {/* List Container */}
+            <div className="flex-1 overflow-hidden flex flex-col">
 
                 {/* Selection Toolbar */}
                 {filteredTransactions.length > 0 && (
@@ -260,7 +218,7 @@ export function InboxList({ selectedIds, onSelectionChange }: InboxListProps) {
                                     : 'Tudo classificado!'}
                             </p>
                             <p className="text-sm mt-2 opacity-70">
-                                Arraste um arquivo CSV para importar
+                                Importe um arquivo CSV usando a área acima
                             </p>
                         </div>
                     ) : (
@@ -279,19 +237,14 @@ export function InboxList({ selectedIds, onSelectionChange }: InboxListProps) {
                 </div>
             </div>
 
-            <AdvancedFilters
-                isOpen={isFiltersOpen}
-                onClose={() => setIsFiltersOpen(false)}
-            />
+            {isFiltersOpen && (
+                <AdvancedFilters
+                    isOpen={isFiltersOpen}
+                    onClose={() => setIsFiltersOpen(false)}
+                />
+            )}
 
-            <CsvUploadModal
-                isOpen={isUploadModalOpen}
-                onClose={() => {
-                    setIsUploadModalOpen(false);
-                    setDroppedFile(null);
-                }}
-                preloadedFile={droppedFile}
-            />
+
         </div>
     );
 }

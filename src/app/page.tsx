@@ -54,6 +54,8 @@ export default function Home() {
     const categorizeMultiple = useTransactionStore((state) => state.categorizeMultiple);
     const setTransactions = useTransactionStore((state) => state.setTransactions);
     const transactions = useTransactionStore((state) => state.transactions);
+    const globalDateStart = useTransactionStore((state) => state.globalDateStart);
+    const globalDateEnd = useTransactionStore((state) => state.globalDateEnd);
 
     const categories = useCategoryStore((state) => state.getActiveCategories());
     const getCategoryById = useCategoryStore((state) => state.getCategoryById);
@@ -73,6 +75,14 @@ export default function Home() {
     const [fileName, setFileName] = useState('');
     const [currencyFormat, setCurrencyFormat] = useState<CurrencyFormat>('pt-BR');
     const addImport = useImportHistoryStore((state) => state.addImport);
+
+    // Hydration fix
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+
 
     const handleFileSelect = useCallback((file: File) => {
         setFileName(file.name);
@@ -302,6 +312,8 @@ export default function Home() {
     const categorizedCount = transactions.filter((t) => t.categoryId !== null).length;
     const progress = totalTransactions > 0 ? (categorizedCount / totalTransactions) * 100 : 0;
 
+    if (!isMounted) return null;
+
     return (
         <DndContext
             sensors={sensors}
@@ -345,44 +357,7 @@ export default function Home() {
                                 onUndo={handleUndo}
                                 onRedo={handleRedo}
                             />
-                            <div className="w-px h-8 bg-gray-200" />
 
-                            {/* Global Date Filter */}
-                            <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 shadow-sm">
-                                <span className="pl-2 text-gray-400">📅</span>
-                                <input
-                                    type="date"
-                                    className="text-sm bg-transparent border-none focus:ring-0 text-gray-600 w-32 cursor-pointer"
-                                    onChange={(e) => {
-                                        const end = useTransactionStore.getState().globalDateEnd;
-                                        useTransactionStore.getState().setGlobalDateFilter(e.target.value || null, end);
-                                    }}
-                                    value={useTransactionStore((state) => state.globalDateStart) || ''}
-                                    title="Data Início"
-                                />
-                                <span className="text-gray-400">→</span>
-                                <input
-                                    type="date"
-                                    className="text-sm bg-transparent border-none focus:ring-0 text-gray-600 w-32 cursor-pointer"
-                                    onChange={(e) => {
-                                        const start = useTransactionStore.getState().globalDateStart;
-                                        useTransactionStore.getState().setGlobalDateFilter(start, e.target.value || null);
-                                    }}
-                                    value={useTransactionStore((state) => state.globalDateEnd) || ''}
-                                    title="Data Fim"
-                                />
-                                {(useTransactionStore((state) => state.globalDateStart) || useTransactionStore((state) => state.globalDateEnd)) && (
-                                    <button
-                                        onClick={() => useTransactionStore.getState().setGlobalDateFilter(null, null)}
-                                        className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
-                                        title="Limpar filtro de data"
-                                    >
-                                        ✕
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="w-px h-8 bg-gray-200" />
 
                             <button
                                 onClick={() => setIsCategoryManagerOpen(true)}
@@ -514,6 +489,43 @@ export default function Home() {
                             />
                         </div>
                     )}
+                </div>
+
+                {/* Global Date Filter (Below CSV) */}
+                <div className="mb-6 flex justify-end">
+                    <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1.5 shadow-sm">
+                        <span className="pl-2 text-sm font-medium text-gray-600">Período Geral:</span>
+                        <input
+                            type="date"
+                            className="text-sm bg-transparent border-none focus:ring-0 text-gray-700 w-32 cursor-pointer"
+                            onChange={(e) => {
+                                const end = useTransactionStore.getState().globalDateEnd;
+                                useTransactionStore.getState().setGlobalDateFilter(e.target.value || null, end);
+                            }}
+                            value={globalDateStart || ''}
+                            title="Data Início"
+                        />
+                        <span className="text-gray-400">→</span>
+                        <input
+                            type="date"
+                            className="text-sm bg-transparent border-none focus:ring-0 text-gray-700 w-32 cursor-pointer"
+                            onChange={(e) => {
+                                const start = useTransactionStore.getState().globalDateStart;
+                                useTransactionStore.getState().setGlobalDateFilter(start, e.target.value || null);
+                            }}
+                            value={globalDateEnd || ''}
+                            title="Data Fim"
+                        />
+                        {(globalDateStart || globalDateEnd) && (
+                            <button
+                                onClick={() => useTransactionStore.getState().setGlobalDateFilter(null, null)}
+                                className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors ml-1"
+                                title="Limpar filtro de data"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Main Content */}

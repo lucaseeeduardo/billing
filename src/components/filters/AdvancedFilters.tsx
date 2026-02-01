@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFilterStore } from '@/store/filterStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useTransactionStore } from '@/store/transactionStore';
@@ -12,6 +12,7 @@ interface AdvancedFiltersProps {
 }
 
 export function AdvancedFilters({ isOpen, onClose }: AdvancedFiltersProps) {
+    // 1. Store Hooks
     const currentFilter = useFilterStore((state) => state.currentFilter);
     const setFilter = useFilterStore((state) => state.setFilter);
     const resetFilter = useFilterStore((state) => state.resetFilter);
@@ -24,14 +25,48 @@ export function AdvancedFilters({ isOpen, onClose }: AdvancedFiltersProps) {
     const categories = useCategoryStore((state) => state.getActiveCategories());
     const allTags = useTransactionStore((state) => state.getAllTags());
 
+    // 2. Local State Hooks
     const [saveFilterName, setSaveFilterName] = useState('');
     const [showSaveInput, setShowSaveInput] = useState(false);
 
+    // Date filter local state
+    const [localDateStart, setLocalDateStart] = useState(currentFilter.dateStart || '');
+    const [localDateEnd, setLocalDateEnd] = useState(currentFilter.dateEnd || '');
+
+    // 3. Effects
+    useEffect(() => {
+        setLocalDateStart(currentFilter.dateStart || '');
+    }, [currentFilter.dateStart]);
+
+    useEffect(() => {
+        setLocalDateEnd(currentFilter.dateEnd || '');
+    }, [currentFilter.dateEnd]);
+
+    // 4. Early Return (Must be after all hooks)
+    if (!isOpen) return null;
+
+    // 5. Handlers
     const handleSaveFilter = () => {
         if (saveFilterName.trim()) {
             saveCurrentFilter(saveFilterName.trim());
             setSaveFilterName('');
             setShowSaveInput(false);
+        }
+    };
+
+    const handleDateChange = (type: 'start' | 'end', value: string) => {
+        if (type === 'start') setLocalDateStart(value);
+        else setLocalDateEnd(value);
+
+        if (!value) {
+            setFilter(type === 'start' ? { dateStart: null } : { dateEnd: null });
+            return;
+        }
+
+        // Validate date (YYYY-MM-DD)
+        const timestamp = Date.parse(value);
+        if (!isNaN(timestamp) && value.length === 10) {
+            setFilter(type === 'start' ? { dateStart: value } : { dateEnd: value });
         }
     };
 
@@ -50,8 +85,6 @@ export function AdvancedFilters({ isOpen, onClose }: AdvancedFiltersProps) {
             : [...current, tag];
         setFilter({ tags: newTags });
     };
-
-    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -174,29 +207,7 @@ export function AdvancedFilters({ isOpen, onClose }: AdvancedFiltersProps) {
                         </div>
                     </div>
 
-                    {/* Date Range */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Período
-                        </label>
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="date"
-                                value={currentFilter.dateStart || ''}
-                                onChange={(e) => setFilter({ dateStart: e.target.value || null })}
-                                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl
-                           focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            <span className="text-gray-400">até</span>
-                            <input
-                                type="date"
-                                value={currentFilter.dateEnd || ''}
-                                onChange={(e) => setFilter({ dateEnd: e.target.value || null })}
-                                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl
-                           focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                        </div>
-                    </div>
+
 
                     {/* Tags */}
                     {allTags.length > 0 && (
@@ -221,6 +232,30 @@ export function AdvancedFilters({ isOpen, onClose }: AdvancedFiltersProps) {
                             </div>
                         </div>
                     )}
+
+                    {/* Date Range */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Período
+                        </label>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="date"
+                                value={localDateStart}
+                                onChange={(e) => handleDateChange('start', e.target.value)}
+                                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl
+                           focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <span className="text-gray-400">até</span>
+                            <input
+                                type="date"
+                                value={localDateEnd}
+                                onChange={(e) => handleDateChange('end', e.target.value)}
+                                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl
+                           focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
 
                     {/* Saved Filters */}
                     <div className="pt-4 border-t border-gray-200">

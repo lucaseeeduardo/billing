@@ -189,7 +189,6 @@ function RulesManager() {
     const addRule = useAutoCategoryStore((state) => state.addRule);
     const removeRule = useAutoCategoryStore((state) => state.removeRule);
     const toggleRule = useAutoCategoryStore((state) => state.toggleRule);
-
     const categories = useCategoryStore((state) => state.categories);
 
     const [term, setTerm] = useState('');
@@ -300,12 +299,84 @@ function RulesManager() {
 // Category Manager Component
 // ========================================
 
+import { downloadBackup, restoreBackup } from '@/utils/backupManager';
+
+function BackupManager() {
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleImportChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const result = restoreBackup(event.target?.result as string);
+            if (result.success) {
+                alert(`${result.message}\n` +
+                    `Categorias: ${result.stats?.categories}\n` +
+                    `Regras: ${result.stats?.rules}\n` +
+                    `Limites: ${result.stats?.limits}`
+                );
+            } else {
+                alert(`Erro: ${result.message}`);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+
+    return (
+        <div className="p-6 space-y-6">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">Backup Completo 📦</h3>
+                <p className="text-sm text-blue-700 mb-4">
+                    Salve todas as suas configurações (Categorias, Regras Automáticas e Limites) em um único arquivo.
+                    Ideal para mover suas configurações entre navegadores ou garantir que seus dados não sejam perdidos.
+                </p>
+                <div className="flex gap-3">
+                    <button
+                        onClick={downloadBackup}
+                        className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <span>📤</span> Exportar Dados
+                    </button>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2 bg-white border border-blue-200 text-blue-700 font-medium rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                    >
+                        <span>📥</span> Importar Dados
+                    </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImportChange}
+                        className="hidden"
+                        accept=".json"
+                    />
+                </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4">
+                <h3 className="font-semibold text-yellow-900 mb-2">Atenção ⚠️</h3>
+                <p className="text-sm text-yellow-700">
+                    Ao importar um backup:
+                    <ul className="list-disc list-inside mt-1 space-y-1">
+                        <li>Novas categorias serão adicionadas (existentes serão mantidas).</li>
+                        <li>Regras automáticas serão <strong>substituídas</strong> pelas do backup.</li>
+                        <li>Limites e alertas serão <strong>substituídos</strong> pelos do backup.</li>
+                    </ul>
+                </p>
+            </div>
+        </div>
+    );
+}
+
 interface CategoryManagerProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-type Tab = 'categories' | 'rules';
+type Tab = 'categories' | 'rules' | 'backup';
 
 export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
     const categories = useCategoryStore((state) => state.categories);
@@ -361,8 +432,8 @@ export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
                             <button
                                 onClick={() => setActiveTab('categories')}
                                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'categories'
-                                        ? 'bg-white text-gray-900 shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
                                 Categorias
@@ -370,11 +441,20 @@ export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
                             <button
                                 onClick={() => setActiveTab('rules')}
                                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'rules'
-                                        ? 'bg-white text-gray-900 shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
                                 Regras Automáticas 🤖
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('backup')}
+                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'backup'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                Backup 💾
                             </button>
                         </div>
                     </div>
@@ -481,8 +561,10 @@ export function CategoryManager({ isOpen, onClose }: CategoryManagerProps) {
                                     </button>
                                 </div>
                             </div>
-                        ) : (
+                        ) : activeTab === 'rules' ? (
                             <RulesManager />
+                        ) : (
+                            <BackupManager />
                         )}
                     </div>
                 </div>

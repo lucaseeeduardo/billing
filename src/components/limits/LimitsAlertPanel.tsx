@@ -184,10 +184,10 @@ export function LimitsAlertPanel({ isOpen, onClose }: LimitsAlertPanelProps) {
                                         <div className="flex justify-between text-sm mb-2">
                                             <span className="text-gray-500">Gasto atual:</span>
                                             <span className={`font-medium ${limitStatus?.status === 'exceeded'
-                                                    ? 'text-red-600'
-                                                    : limitStatus?.status === 'warning'
-                                                        ? 'text-amber-600'
-                                                        : 'text-green-600'
+                                                ? 'text-red-600'
+                                                : limitStatus?.status === 'warning'
+                                                    ? 'text-amber-600'
+                                                    : 'text-green-600'
                                                 }`}>
                                                 {formatCurrency(currentValue)} ({limitStatus?.percentage.toFixed(0)}%)
                                             </span>
@@ -195,10 +195,10 @@ export function LimitsAlertPanel({ isOpen, onClose }: LimitsAlertPanelProps) {
                                         <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full transition-all duration-500 ${limitStatus?.status === 'exceeded'
-                                                        ? 'bg-red-500'
-                                                        : limitStatus?.status === 'warning'
-                                                            ? 'bg-amber-500'
-                                                            : 'bg-green-500'
+                                                    ? 'bg-red-500'
+                                                    : limitStatus?.status === 'warning'
+                                                        ? 'bg-amber-500'
+                                                        : 'bg-green-500'
                                                     }`}
                                                 style={{ width: `${Math.min(limitStatus?.percentage || 0, 100)}%` }}
                                             />

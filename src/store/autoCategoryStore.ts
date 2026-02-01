@@ -1,13 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { AutoCategoryRule } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-
-export interface AutoCategoryRule {
-    id: string;
-    term: string;
-    categoryId: string;
-    active: boolean;
-}
 
 interface AutoCategoryState {
     rules: AutoCategoryRule[];
@@ -17,6 +11,7 @@ interface AutoCategoryState {
     removeRule: (id: string) => void;
     toggleRule: (id: string) => void;
     updateRule: (id: string, updates: Partial<AutoCategoryRule>) => void;
+    setRules: (rules: AutoCategoryRule[]) => void;
     clearRules: () => void;
 
     // Helpers
@@ -59,6 +54,8 @@ export const useAutoCategoryStore = create<AutoCategoryState>()(
                         r.id === id ? { ...r, ...updates } : r
                     ),
                 })),
+
+            setRules: (rules) => set({ rules }),
 
             clearRules: () => set({ rules: [] }),
 

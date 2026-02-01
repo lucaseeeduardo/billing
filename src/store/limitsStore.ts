@@ -13,6 +13,8 @@ interface LimitsState {
     addAlert: (alert: Omit<Alerta, 'id' | 'dataAlerta'>) => void;
     clearAlerts: () => void;
     dismissAlert: (id: string) => void;
+    setLimits: (limits: LimiteCategoria[]) => void;
+    clearLimits: () => void;
 
     // Selectors
     getLimitByCategory: (categoryId: string) => LimiteCategoria | undefined;
@@ -54,6 +56,9 @@ export const useLimitsStore = create<LimitsState>()(
                 set((state) => ({
                     limits: state.limits.filter((l) => l.categoriaId !== categoryId),
                 })),
+
+            setLimits: (limits) => set({ limits }),
+            clearLimits: () => set({ limits: [] }),
 
             addAlert: (alert) =>
                 set((state) => ({

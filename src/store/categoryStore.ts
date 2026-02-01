@@ -19,6 +19,8 @@ interface CategoryState {
     getCategoryById: (id: string) => Categoria | undefined;
     getCategoryByName: (name: string) => Categoria | undefined;
     getDefaultCategory: () => Categoria;
+    restoreCategory: (category: Categoria) => void;
+    importCategories: (categories: Categoria[]) => void;
 }
 
 export const useCategoryStore = create<CategoryState>()(
@@ -91,6 +93,38 @@ export const useCategoryStore = create<CategoryState>()(
             getDefaultCategory: () => {
                 const defaultCat = get().categories.find((cat) => cat.isDefault);
                 return defaultCat || get().categories[get().categories.length - 1];
+            },
+
+            restoreCategory: (category) => {
+                const existing = get().categories.find((c) => c.id === category.id);
+                if (!existing) {
+                    set((state) => ({
+                        categories: [...state.categories, category],
+                    }));
+                }
+            },
+
+            importCategories: (newCategories) => {
+                set((state) => {
+                    const currentIds = new Set(state.categories.map((c) => c.id));
+                    const toAdd = newCategories.filter((c) => !currentIds.has(c.id));
+
+                    // Optional: Update existing ones? For now, we only ensure existence as per "create if exists" logic.
+                    // If we want to sync perfectly, we might want to upsert.
+                    // Let's doing UPSERT (Update existing, Add new) to ensure backup properties take precedence.
+
+                    const merged = [...state.categories];
+                    newCategories.forEach(newCat => {
+                        const index = merged.findIndex(c => c.id === newCat.id);
+                        if (index !== -1) {
+                            merged[index] = newCat;
+                        } else {
+                            merged.push(newCat);
+                        }
+                    });
+
+                    return { categories: merged };
+                });
             },
         }),
         {

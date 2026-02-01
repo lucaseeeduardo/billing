@@ -153,3 +153,13 @@ export const CATEGORY_COLOR_PRESETS = [
     '#06B6D4', '#EC4899', '#F59E0B', '#10B981', '#6366F1',
     '#84CC16', '#14B8A6', '#F43F5E', '#8B5CF6', '#64748B',
 ];
+// ==========================================
+// AUTO CATEGORY TYPES
+// ==========================================
+
+export interface AutoCategoryRule {
+    id: string;
+    term: string;
+    categoryId: string;
+    active: boolean;
+}
